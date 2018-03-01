@@ -29,7 +29,7 @@ for image_path, descriptor in des_list[1:]:
     descriptors = np.vstack((descriptors, descriptor))
 
 print(len(descriptors))
-k = 20
+k = 50
 voc, variance = kmeans(descriptors, k, 1)
 print("kmeans done")
 
