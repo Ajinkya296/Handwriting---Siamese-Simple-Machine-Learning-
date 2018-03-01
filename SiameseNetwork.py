@@ -5,16 +5,16 @@ from keras.layers import Dense, Dropout, Lambda, Input
 from keras.optimizers import SGD, RMSprop ,Adam
 from keras import backend as K
 from keras.callbacks import History
+from keras.utils import plot_model
 import tensorflow as T
 import os,random
 import collections
 import matplotlib.pyplot as plt
 import pandas as pd
 n = 1556
-
-def contrastive_loss(y_true, y_pred):
+feature_size = 50
+def contrastive_loss(y_true, Dw):
     margin = 1
-    Dw = siamese_euclidean_distance([y_true,y_pred])
     a = T.multiply( y_true , T.pow(T.maximum(0.0,margin - Dw), 2 ))
     b = T.multiply( T.subtract ( T.constant([1.0],) , y_true ), T.pow(Dw,2) )
     return T.divide(T.add(a,b) , 2 )
@@ -75,7 +75,27 @@ def create_pairs(data,writers,pair_index):
                         break
                 else:
                     break;
+    for writer in range(len(writers)):
+        for i in range(len(data[writer])-2):
+            visited = [1 for w in writers]
+            while True:
+                inc = random.randrange(1, 1556)
+                other_writer =  (writer + inc )%1556
+                visited[other_writer] = 0
+                if sum(visited) > 1:   # If not tried every other writer
+                    if len(data[other_writer]) > i :
+                        pos_feature1, pos_feature2 = data[writer][i], data[writer][i+2]
+                        neg_feature1, neg_feature2 = data[writer][i], data[other_writer][i]
 
+                        pairs += [[pos_feature1, pos_feature2]]
+                        pairs += [[neg_feature1, neg_feature2]]
+
+                        pair_index += [[writer,writer]]
+                        pair_index += [[writer,other_writer]]
+                        labels += [1, 0]
+                        break
+                else:
+                    break;
     summary = pd.DataFrame( np.column_stack((np.array(pair_index),np.array(labels))) , columns = ['writer1' ,'writer2','label'])
     return np.array(pairs), np.array(labels)
 def check_model_predictions(pairs,label,model,pair_index):
@@ -93,7 +113,7 @@ def check_model_predictions(pairs,label,model,pair_index):
     print("Custom accuracy : " , count/n)
 def NeuralNet(pairs,num_epochs):
     # Model
-    input_shape = (20,)
+    input_shape = (feature_size,)
     left_input  = Input(shape = input_shape)
     right_input = Input(shape = input_shape)
 
@@ -104,10 +124,10 @@ def NeuralNet(pairs,num_epochs):
     siamese_net = Model(inputs=[left_input,right_input],outputs=prediction)
 
     # train
-    adam = Adam(lr=0.001)
+    adam = Adam(lr=0.01)
     siamese_net.compile(loss=contrastive_loss , optimizer=adam, metrics = ['accuracy'])
     history = History()
-    summary = siamese_net.fit([pairs[:18000,0,:] , pairs[:18000,1,:] ], labels[:18000], batch_size=600, nb_epoch=num_epochs, callbacks= [history] , validation_data=([pairs[18001:,0,:], pairs[18001:,1,:]], labels[18001:]))
+    summary = siamese_net.fit([pairs[6000:,0,:] , pairs[6000:,1,:] ], labels[6000:], batch_size=128, nb_epoch=num_epochs, callbacks= [history] , validation_data=([pairs[:6000,0,:], pairs[:6000,1,:]], labels[:6000]))
     siamese_net.summary()
     history_df = pd.DataFrame(summary.history)
     history_df.to_csv("history.csv")
@@ -117,9 +137,11 @@ def NeuralNet(pairs,num_epochs):
 data,writers =  read_features()
 pair_index = []
 pairs , labels =  create_pairs(data,writers,pair_index)
-model,history =  NeuralNet(pairs,num_epochs = 20)
-check_model_predictions(pairs,labels,model,writers)
+print(np.array(pairs).shape)
+model,history =  NeuralNet(pairs,num_epochs = 50)
+
+plot_model(model, to_file='model.png' ,show_shapes = True)
 
 plt.figure()
-history.plot()
+history['loss'].plot()
 plt.show()
